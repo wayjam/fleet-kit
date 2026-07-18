@@ -1,0 +1,8 @@
+result
+result-*
+.DS_Store
+.fleet/
+local/
+output/
+__pycache__/
+*.pyc

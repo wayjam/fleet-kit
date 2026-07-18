@@ -1,0 +1,11 @@
+.direnv/
+.env
+.envrc
+result
+result-*
+
+# Keep local operator notes and generated private material out of git.
+local/
+*.agekey
+*.key
+*.pem

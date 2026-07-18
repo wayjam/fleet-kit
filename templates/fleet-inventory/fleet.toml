@@ -1,0 +1,15 @@
+[paths]
+ssh_config = "local/ssh-config"
+remote_root = "/root"
+secret_key_dir = "local/keys"
+
+[builder]
+default = ""
+ssh_key = "-"
+memory = 768
+use_kvm = true
+remote_nix = "auto"
+
+[repos]
+public_name = "fleet-kit"
+inventory_name = "fleet-inventory"
