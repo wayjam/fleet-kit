@@ -28,11 +28,17 @@ DEFAULT_CONFIG = {
         "memory": 768,
         "use_kvm": True,
         "remote_nix": "auto",
+        # auto | rsync | tar — auto uses rsync when both ends have it
+        "sync_method": "auto",
     },
     "builders": {},
     "repos": {
         "public_name": "fleet-kit",
         "inventory_name": "fleet-inventory",
+        # flake input attribute for the public kit (not the directory name)
+        "fleetkit_input": "fleetkit",
+        # auto | path | remote — path syncs sibling kit; remote lets builder fetch
+        "fleetkit_mode": "auto",
     },
 }
 

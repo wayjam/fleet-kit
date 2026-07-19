@@ -210,44 +210,186 @@ def remote_nix_expr(builder):
     return shlex.quote(builder["remote_nix"])
 
 
-def sync_to_builder(config, builder):
-    repos = config.get("repos", {})
-    public_name = repos.get("public_name", "fleet-kit")
-    inventory_name = repos.get("inventory_name", "fleet-inventory")
-    root = repo_root()
-    parent = root.parent
-    for name in (public_name, inventory_name):
-        if not (parent / name).exists():
-            die(f"cannot find sibling repo: {parent / name}")
+# ---------------------------------------------------------------------------
+# Smart sync: rsync (preferred) with tar fallback; path vs remote fleetkit
+# ---------------------------------------------------------------------------
 
-    remote_root = builder["remote_root"]
+_REMOTE_FLEETKIT_TYPES = frozenset({"github", "git", "gitlab", "sourcehut", "tarball"})
+_RSYNC_EXCLUDES = (
+    ".git",
+    "result",
+    "result-*",
+    "main.raw",
+    "local/keys",
+    ".fleet",
+    "__pycache__",
+    "*.pyc",
+)
+
+
+def fleetkit_input_name(config) -> str:
+    return config.get("repos", {}).get("fleetkit_input", "fleetkit")
+
+
+def detect_fleetkit_mode(config, inventory_root=None) -> str:
+    """Return ``path`` (sync sibling kit) or ``remote`` (builder fetches via lock).
+
+    Uses ``repos.fleetkit_mode`` when set to path/remote; otherwise inspects
+    inventory ``flake.lock`` for the fleetkit input type.
+    """
+    repos = config.get("repos", {})
+    forced = str(repos.get("fleetkit_mode", "auto") or "auto").lower()
+    if forced in {"path", "remote"}:
+        return forced
+    if forced not in {"auto", ""}:
+        die(f"repos.fleetkit_mode must be auto|path|remote, got {forced!r}")
+
+    root = Path(inventory_root) if inventory_root else repo_root()
+    input_name = fleetkit_input_name(config)
+    lock_path = root / "flake.lock"
+    kind = None
+    if lock_path.is_file():
+        try:
+            import json
+
+            lock = json.loads(lock_path.read_text())
+            node = lock.get("nodes", {}).get(input_name, {})
+            kind = (node.get("locked") or {}).get("type") or (node.get("original") or {}).get("type")
+        except (OSError, ValueError, TypeError) as exc:
+            print(f"warning: could not parse {lock_path}: {exc}", file=sys.stderr)
+
+    if kind == "path":
+        return "path"
+    if kind in _REMOTE_FLEETKIT_TYPES:
+        return "remote"
+
+    # Conservative fallback: sibling public dir → path-sync, else remote.
+    public_name = repos.get("public_name", "fleet-kit")
+    if (root.parent / public_name).is_dir():
+        print(
+            f"warning: fleetkit input type {kind!r} unknown; "
+            f"sibling {public_name!r} exists → path-sync",
+            file=sys.stderr,
+        )
+        return "path"
+    print(
+        f"warning: fleetkit input type {kind!r} and no sibling kit dir; "
+        "assuming remote-fetch",
+        file=sys.stderr,
+    )
+    return "remote"
+
+
+def _local_has_rsync() -> bool:
+    from shutil import which
+
+    return which("rsync") is not None
+
+
+def _remote_has_rsync(builder) -> bool:
+    try:
+        proc = subprocess.run(
+            [*ssh_args(builder), "command -v rsync >/dev/null"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return proc.returncode == 0
+    except OSError:
+        return False
+
+
+def resolve_sync_method(config, builder) -> str:
+    """Return ``rsync`` or ``tar``.
+
+    ``builder.sync_method`` / top-level builder defaults:
+      auto  — rsync if both ends have it, else tar
+      rsync — require rsync or die
+      tar   — always tar
+    """
+    # Prefer per-builder, then [builder] section, then default auto
+    preferred = (
+        builder.get("sync_method")
+        or config.get("builder", {}).get("sync_method")
+        or "auto"
+    )
+    preferred = str(preferred).lower()
+    if preferred == "tar":
+        return "tar"
+    if preferred not in {"auto", "rsync"}:
+        die(f"sync_method must be auto|rsync|tar, got {preferred!r}")
+
+    local_ok = _local_has_rsync()
+    remote_ok = _remote_has_rsync(builder) if local_ok else False
+    if local_ok and remote_ok:
+        return "rsync"
+    if preferred == "rsync":
+        die(
+            "sync_method=rsync but rsync is missing "
+            f"(local={local_ok}, remote={remote_ok})"
+        )
+    print(
+        f"fleet sync: rsync unavailable (local={local_ok}, remote={remote_ok}); "
+        "falling back to tar",
+        file=sys.stderr,
+    )
+    return "tar"
+
+
+def _rsync_ssh_shell(builder) -> str:
+    parts = ["ssh"]
+    config_file = generated_ssh_config(builder)
+    if config_file:
+        parts.extend(["-F", str(config_file)])
+    parts.extend(ssh_options())
+    return " ".join(shlex.quote(p) for p in parts)
+
+
+def _sync_repo_rsync(builder, local_dir: Path, remote_dir: str) -> None:
+    remote_shell(builder, f"mkdir -p {shlex.quote(remote_dir)}")
+    cmd = [
+        "rsync",
+        "-az",
+        "--delete",
+        *[item for ex in _RSYNC_EXCLUDES for item in ("--exclude", ex)],
+        "-e",
+        _rsync_ssh_shell(builder),
+        f"{local_dir}/",
+        f"{builder['alias']}:{remote_dir}/",
+    ]
+    run(cmd)
+
+
+def _sync_repos_tar(builder, parent: Path, names: list[str], remote_root: str) -> None:
+    if not names:
+        return
+    excludes = []
+    for name in names:
+        excludes.extend(["--exclude", f"{name}/.git"])
+        excludes.extend(["--exclude", f"{name}/result"])
+        excludes.extend(["--exclude", f"{name}/result-*"])
+        excludes.extend(["--exclude", f"{name}/main.raw"])
+        excludes.extend(["--exclude", f"{name}/local/keys"])
+        excludes.extend(["--exclude", f"{name}/.fleet"])
+        excludes.extend(["--exclude", f"{name}/__pycache__"])
+
     tar_cmd = [
         "tar",
         "-C",
         str(parent),
-        "--exclude",
-        f"{public_name}/.git",
-        "--exclude",
-        f"{inventory_name}/.git",
-        "--exclude",
-        f"{inventory_name}/result",
-        "--exclude",
-        f"{inventory_name}/result-*",
-        "--exclude",
-        f"{inventory_name}/main.raw",
-        "--exclude",
-        f"{inventory_name}/local/keys",
+        *excludes,
         "-czf",
         "-",
-        public_name,
-        inventory_name,
+        *names,
     ]
+    rm_parts = " ".join(shlex.quote(f"{remote_root}/{n}") for n in names)
     ssh_cmd = ssh_args(builder) + [
-        f"rm -rf {shlex.quote(remote_root + '/' + public_name)} "
-        f"{shlex.quote(remote_root + '/' + inventory_name)} "
-        f"&& tar -xzf - -C {shlex.quote(remote_root)}"
+        f"rm -rf {rm_parts} && tar -xzf - -C {shlex.quote(remote_root)}"
     ]
-    print("+ " + " ".join(shlex.quote(a) for a in tar_cmd) + " | " + " ".join(shlex.quote(a) for a in ssh_cmd), file=sys.stderr)
+    print(
+        "+ " + " ".join(shlex.quote(a) for a in tar_cmd) + " | " + " ".join(shlex.quote(a) for a in ssh_cmd),
+        file=sys.stderr,
+    )
     tar_proc = subprocess.Popen(tar_cmd, stdout=subprocess.PIPE)
     ssh_proc = subprocess.Popen(ssh_cmd, stdin=tar_proc.stdout)
     assert tar_proc.stdout is not None
@@ -258,6 +400,82 @@ def sync_to_builder(config, builder):
         raise subprocess.CalledProcessError(tar_code, tar_cmd)
     if ssh_code != 0:
         raise subprocess.CalledProcessError(ssh_code, ssh_cmd)
+
+
+def sync_to_builder(config, builder):
+    """Sync inventory (always) and public kit (only when fleetkit is a path input).
+
+    Transport: rsync when available on both ends, else tar|ssh (legacy).
+    """
+    repos = config.get("repos", {})
+    public_name = repos.get("public_name", "fleet-kit")
+    inventory_name = repos.get("inventory_name", "fleet-inventory")
+    root = repo_root()
+    parent = root.parent
+
+    if not (parent / inventory_name).exists():
+        die(f"cannot find inventory sibling repo: {parent / inventory_name}")
+
+    mode = detect_fleetkit_mode(config, inventory_root=root)
+    names = [inventory_name]
+    if mode == "path":
+        if not (parent / public_name).exists():
+            die(
+                f"fleetkit_mode=path but cannot find public sibling repo: "
+                f"{parent / public_name}"
+            )
+        names.append(public_name)
+
+    method = resolve_sync_method(config, builder)
+    remote_root = builder["remote_root"]
+    print(
+        f"fleet sync: fleetkit_mode={mode} sync_method={method} repos={names}",
+        file=sys.stderr,
+    )
+
+    if method == "rsync":
+        for name in names:
+            local_dir = parent / name
+            remote_dir = f"{remote_root}/{name}"
+            _sync_repo_rsync(builder, local_dir, remote_dir)
+    else:
+        _sync_repos_tar(builder, parent, names, remote_root)
+
+
+def lock_fleetkit_on_builder(config, builder) -> None:
+    """On builder: override fleetkit to synced path, or no-op for remote inputs."""
+    repos = config.get("repos", {})
+    public_name = repos.get("public_name", "fleet-kit")
+    inventory_name = repos.get("inventory_name", "fleet-inventory")
+    input_name = fleetkit_input_name(config)
+    remote_root = builder["remote_root"]
+    remote_nix = remote_nix_expr(builder)
+    mode = detect_fleetkit_mode(config)
+
+    inv = shlex.quote(f"{remote_root}/{inventory_name}")
+    if mode == "path":
+        public_path = shlex.quote(f"{remote_root}/{public_name}")
+        script = (
+            f"cd {inv}; remote_nix={remote_nix}; "
+            f"$remote_nix flake lock --override-input {shlex.quote(input_name)} "
+            f"path:{public_path}"
+        )
+        print(
+            f"fleet lock: override-input {input_name} → path:{remote_root}/{public_name}",
+            file=sys.stderr,
+        )
+    else:
+        # Remote git/github: trust flake.lock; builder fetches. No path override.
+        script = (
+            f"cd {inv}; remote_nix={remote_nix}; "
+            f"$remote_nix flake metadata . >/dev/null"
+        )
+        print(
+            f"fleet lock: fleetkit is remote; no path override "
+            f"(builder will fetch {input_name} from lock)",
+            file=sys.stderr,
+        )
+    remote_shell(builder, script)
 
 
 def normalize_builder_arg(args):

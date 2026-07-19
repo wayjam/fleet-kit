@@ -12,6 +12,7 @@ import shlex
 from builder import (
     apply_builder_overrides,
     builder_config,
+    lock_fleetkit_on_builder,
     remote_nix_expr,
     remote_shell,
     sync_to_builder,
@@ -33,18 +34,7 @@ def _stage_sync(ctx: RunContext) -> None:
 
 def _stage_lock(ctx: RunContext) -> None:
     builder = ctx.data["builder"]
-    repos = ctx.config.get("repos", {})
-    public_name = repos.get("public_name", "fleet-kit")
-    inventory_name = repos.get("inventory_name", "fleet-inventory")
-    remote_root = builder["remote_root"]
-    remote_nix = remote_nix_expr(builder)
-    public_path = shlex.quote(remote_root + "/" + public_name)
-    script = (
-        f"cd {shlex.quote(remote_root + '/' + inventory_name)}; "
-        f"remote_nix={remote_nix}; "
-        f"$remote_nix flake lock --override-input fleetkit path:{public_path}"
-    )
-    remote_shell(builder, script)
+    lock_fleetkit_on_builder(ctx.config, builder)
 
 
 def _stage_apply_remote(ctx: RunContext) -> None:

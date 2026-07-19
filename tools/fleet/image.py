@@ -14,6 +14,8 @@ from builder import (
     apply_builder_overrides,
     builder_config,
     builder_spec,
+    detect_fleetkit_mode,
+    fleetkit_input_name,
     nix_ssh_env,
     remote_nix_expr,
     remote_repo_path,
@@ -60,11 +62,20 @@ def _stage_remote_build(ctx: RunContext) -> None:
     job_id = make_job_id("image", host)
     ctx.data["job_id"] = job_id
 
+    # Only path-mode fleetkit needs --override-input to the synced tree.
+    override = ""
+    if detect_fleetkit_mode(config) == "path":
+        inp = fleetkit_input_name(config)
+        override = (
+            f"--override-input {shlex.quote(inp)} "
+            f"path:{shlex.quote(remote_root + '/' + public_name)} "
+        )
+
     inner = (
         f"cd {shlex.quote(remote_root + '/' + inventory_name)}; "
         f"remote_nix={remote_nix}; "
         f"script=$($remote_nix build --print-out-paths "
-        f"--override-input fleetkit path:{shlex.quote(remote_root + '/' + public_name)} "
+        f"{override}"
         f".#nixosConfigurations.{shlex.quote(host)}.config.system.build.diskoImagesScript); "
         f"out_dir={shlex.quote(out_dir)}; "
         f"mkdir -p \"$out_dir\"; "
