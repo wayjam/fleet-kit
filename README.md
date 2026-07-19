@@ -60,9 +60,25 @@ Example on a China-based host:
 
 ## Private inventory
 
-Copy the template:
+Quick scaffold (from a parent directory such as `~/deploy`):
 
 ```shell
+# next to fleet-kit checkout
+nix run path:./fleet-kit#fleet -- inventory init fleet-private
+
+# options
+nix run path:./fleet-kit#fleet -- inventory init my-inv \
+  --fleetkit-url 'path:../fleet-kit' \
+  --name my-inv \
+  --git \
+  --lock
+```
+
+Also available via flake template / copy:
+
+```shell
+nix flake new -t path:./fleet-kit#fleet-inventory fleet-private
+# or
 cp -R templates/fleet-inventory ../my-fleet-private
 ```
 

@@ -80,6 +80,7 @@
             wireguard-tools
           ];
         text = ''
+          export FLEET_KIT_TEMPLATE_DIR='${./templates/fleet-inventory}'
           exec ${pkgs.python3}/bin/python3 ${./tools/fleet} "$@"
         '';
       };

@@ -14,6 +14,7 @@ from image import cmd_download_image, cmd_image
 from infect import INFECT_STAGES, cmd_infect
 from install import cmd_install
 from jobs import cmd_jobs
+from inventory import cmd_inventory_init
 from justfile import cmd_justfile_render
 from lxc import cmd_lxc_switch
 from misc import cmd_check, cmd_eval, cmd_fmt
@@ -211,6 +212,44 @@ def build_parser():
     p = justfile_sub.add_parser("render")
     p.add_argument("--output", default="-")
     p.set_defaults(func=cmd_justfile_render)
+
+    # -- inventory init -------------------------------------------------------
+    inventory = sub.add_parser(
+        "inventory",
+        help="private inventory helpers",
+    )
+    inventory_sub = inventory.add_subparsers(dest="inventory_command", required=True)
+    p = inventory_sub.add_parser(
+        "init",
+        help="scaffold a private inventory from templates/fleet-inventory",
+    )
+    p.add_argument(
+        "directory",
+        nargs="?",
+        default="fleet-private",
+        help="destination directory (default: fleet-private)",
+    )
+    p.add_argument(
+        "--fleetkit-url",
+        default="",
+        help='flake input URL for fleetkit (default: path:../fleet-kit)',
+    )
+    p.add_argument(
+        "--name",
+        default="",
+        help="repos.inventory_name in fleet.toml (default: destination directory name)",
+    )
+    p.add_argument(
+        "--git",
+        action="store_true",
+        help="run git init in the new directory",
+    )
+    p.add_argument(
+        "--lock",
+        action="store_true",
+        help="run nix flake lock after scaffolding",
+    )
+    p.set_defaults(func=cmd_inventory_init)
 
     return parser
 
