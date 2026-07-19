@@ -1,8 +1,45 @@
+# Nix build products
 result
 result-*
-.DS_Store
+
+# Fleet local state
 .fleet/
 local/
 output/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+
+# Editors / IDE
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Editor / OS junk
+*.orig
+*.bak
+Thumbs.db
