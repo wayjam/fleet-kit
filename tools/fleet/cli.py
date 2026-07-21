@@ -8,13 +8,21 @@ import argparse
 
 from age import cmd_age
 from build import cmd_build
-from builder import add_builder_options, cmd_builder_ping
+from builder import (
+    add_builder_options,
+    apply_builder_overrides,
+    builder_config,
+    cmd_builder_ping,
+    sync_to_builder,
+)
 from deploy import cmd_deploy, cmd_deploy_all
+from diff_cmd import cmd_diff
+from doctor import cmd_doctor
 from image import cmd_download_image, cmd_image
 from infect import INFECT_STAGES, cmd_infect
 from install import cmd_install
+from inventory import cmd_inventory
 from jobs import cmd_jobs
-from inventory import cmd_inventory_init
 from justfile import cmd_justfile_render
 from lxc import cmd_lxc_switch
 from misc import cmd_check, cmd_eval, cmd_fmt
@@ -22,6 +30,9 @@ from orchestrator import add_orchestration_options
 from ports import cmd_ports
 from profile import cmd_profile
 from secret import cmd_secret
+from secrets_audit import cmd_secrets_audit
+from sops_cmd import cmd_sops
+from stale import check_path_fleetkit_stale
 
 from common import load_config
 
@@ -213,12 +224,13 @@ def build_parser():
     p.add_argument("--output", default="-")
     p.set_defaults(func=cmd_justfile_render)
 
-    # -- inventory init -------------------------------------------------------
+    # -- inventory (init / list / add-host / doctor) ---------------------------
     inventory = sub.add_parser(
         "inventory",
-        help="private inventory helpers",
+        help="private inventory helpers (init, list, add-host, doctor)",
     )
     inventory_sub = inventory.add_subparsers(dest="inventory_command", required=True)
+
     p = inventory_sub.add_parser(
         "init",
         help="scaffold a private inventory from templates/fleet-inventory",
@@ -249,13 +261,125 @@ def build_parser():
         action="store_true",
         help="run nix flake lock after scaffolding",
     )
-    p.set_defaults(func=cmd_inventory_init)
+    p.set_defaults(func=cmd_inventory)
+
+    p = inventory_sub.add_parser("list", help="list nixos hosts in hosts/default.nix")
+    p.set_defaults(func=cmd_inventory)
+
+    p = inventory_sub.add_parser(
+        "add-host",
+        help="add a host skeleton and register it in hosts/default.nix",
+    )
+    p.add_argument("host", help="inventory key / hostname (e.g. aws-sg2)")
+    p.add_argument(
+        "--kind",
+        choices=("proxy", "image"),
+        default="proxy",
+        help="host skeleton kind (default: proxy)",
+    )
+    p.add_argument("--target-host", default="", help="deployment.targetHost (default placeholder)")
+    p.add_argument("--target-port", type=int, default=2234)
+    p.add_argument("--target-user", default="root")
+    p.add_argument("--tag", action="append", default=[], help="deployment tag (repeatable)")
+    p.add_argument(
+        "--image",
+        action="store_true",
+        help="set image = true even for proxy kind",
+    )
+    p.add_argument(
+        "--from-template",
+        action="store_true",
+        help="copy hosts/proxy-example or image-example instead of minimal skeleton",
+    )
+    p.set_defaults(func=cmd_inventory)
+
+    p = inventory_sub.add_parser(
+        "doctor",
+        help="check inventory layout, fleetkit input, secrets tracking",
+    )
+    p.set_defaults(func=cmd_inventory)
+
+    # -- doctor ---------------------------------------------------------------
+    p = sub.add_parser("doctor", help="diagnose inventory, lock, and builder")
+    p.add_argument(
+        "doctor_target",
+        nargs="?",
+        default="all",
+        choices=("all", "inventory", "builder"),
+        help="what to check (default: all)",
+    )
+    p.add_argument("--builder", default="")
+    add_builder_options(p)
+    p.set_defaults(func=cmd_doctor)
+
+    # -- sync -----------------------------------------------------------------
+    p = sub.add_parser("sync", help="sync worktree to remote builder")
+    p.add_argument("--builder", default="")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print fleetkit_mode/sync_method/repos only; do not transfer",
+    )
+    add_builder_options(p)
+    p.set_defaults(func=cmd_sync)
+
+    # -- secrets audit --------------------------------------------------------
+    p = sub.add_parser("secrets", help="secret file helpers")
+    secrets_sub = p.add_subparsers(dest="secrets_command", required=True)
+    p = secrets_sub.add_parser(
+        "audit",
+        help="compare sops.secrets declarations vs secrets/*.yaml keys",
+    )
+    p.add_argument("--host", default="", help="limit to one host")
+    p.set_defaults(func=cmd_secrets_audit_entry)
+
+    # -- sops rekey / rotate-hint ---------------------------------------------
+    p = sub.add_parser("sops", help="sops maintenance (rekey, rotate checklist)")
+    sops_sub = p.add_subparsers(dest="sops_command", required=True)
+    p = sops_sub.add_parser(
+        "rekey",
+        help="sops updatekeys on secrets (after .sops.yaml recipient change)",
+    )
+    p.add_argument("--host", default="", help="only this host's secrets/<host>.yaml")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_sops)
+    p = sops_sub.add_parser(
+        "rotate-hint",
+        help="print age key rotation checklist (no automatic rewrite)",
+    )
+    p.set_defaults(func=cmd_sops)
+
+    # -- diff -----------------------------------------------------------------
+    p = sub.add_parser("diff", help="colmena dry-activate for one host")
+    p.add_argument("host")
+    p.set_defaults(func=cmd_diff)
 
     return parser
+
+
+def cmd_sync(args, config):
+    name = args.builder or None
+    if name == "":
+        name = None
+    builder = apply_builder_overrides(builder_config(config, name), args)
+    sync_to_builder(config, builder, dry_run=bool(args.dry_run))
+
+
+def cmd_secrets_audit_entry(args, config):
+    if not getattr(args, "host", None):
+        args.host = None
+    elif args.host == "":
+        args.host = None
+    return cmd_secrets_audit(args, config)
 
 
 def main():
     parser = build_parser()
     args = parser.parse_args()
     config = load_config()
+    # Warn when path fleetkit lock is older than the on-disk kit tree.
+    # Skip for pure scaffolding that may run outside an inventory.
+    cmd = getattr(args, "command", None)
+    if cmd not in {"inventory"} or getattr(args, "inventory_command", None) != "init":
+        check_path_fleetkit_stale(config)
     args.func(args, config)

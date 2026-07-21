@@ -402,7 +402,7 @@ def _sync_repos_tar(builder, parent: Path, names: list[str], remote_root: str) -
         raise subprocess.CalledProcessError(ssh_code, ssh_cmd)
 
 
-def sync_to_builder(config, builder):
+def sync_to_builder(config, builder, *, dry_run: bool = False):
     """Sync inventory (always) and public kit (only when fleetkit is a path input).
 
     Transport: rsync when available on both ends, else tar|ssh (legacy).
@@ -429,9 +429,29 @@ def sync_to_builder(config, builder):
     method = resolve_sync_method(config, builder)
     remote_root = builder["remote_root"]
     print(
-        f"fleet sync: fleetkit_mode={mode} sync_method={method} repos={names}",
+        f"fleet sync: fleetkit_mode={mode} sync_method={method} repos={names}"
+        + (" (dry-run)" if dry_run else ""),
         file=sys.stderr,
     )
+
+    if dry_run:
+        for name in names:
+            print(
+                f"  would sync {parent / name} → {builder.get('alias', 'builder')}:{remote_root}/{name}",
+                file=sys.stderr,
+            )
+        if mode == "path":
+            print(
+                f"  would lock: override-input {fleetkit_input_name(config)} "
+                f"path:{remote_root}/{public_name}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"  would lock: no path override (remote {fleetkit_input_name(config)})",
+                file=sys.stderr,
+            )
+        return
 
     if method == "rsync":
         for name in names:

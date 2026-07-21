@@ -105,3 +105,26 @@ See `docs/README.md` and `templates/fleet-inventory/README.md` for details.
 nix develop
 nix run .#fleet -- --help
 ```
+
+## Inventory & ops CLI (highlights)
+
+```shell
+# scaffold private inventory
+nix run .#fleet -- inventory init ../fleet-private --git
+
+# inside a private inventory:
+nix run .#fleet -- inventory list
+nix run .#fleet -- inventory add-host my-vps --target-host 1.2.3.4 --kind proxy
+nix run .#fleet -- inventory doctor
+nix run .#fleet -- doctor              # inventory + lock + builder
+nix run .#fleet -- doctor builder
+nix run .#fleet -- sync --dry-run --builder default
+nix run .#fleet -- secrets audit
+nix run .#fleet -- sops rekey --dry-run
+nix run .#fleet -- sops rotate-hint
+nix run .#fleet -- diff <host>         # colmena dry-activate
+```
+
+Path `fleetkit` lock stale warning: if the local kit tree is newer than
+`flake.lock`, `fleet` prints a fix hint (`nix flake update fleetkit`).
+Skip with `FLEET_SKIP_STALE_CHECK=1`.

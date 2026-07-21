@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Python syntax
+        run: python3 -m py_compile tools/fleet/*.py
+
+      - name: Fleet CLI help
+        run: |
+          nix run .#fleet -- --help
+          nix run .#fleet -- inventory --help
+
+      - name: Flake show
+        run: nix flake show --all-systems
+
+      - name: Eval library surface
+        run: |
+          nix eval .#lib.hostInventory.supportedSystems --json
+          nix eval .#nixosModules --apply 'm: builtins.attrNames m' --json
+          nix eval .#darwinModules --apply 'm: builtins.attrNames m' --json
+
+      - name: Inventory unit smoke
+        run: |
+          export FLEET_KIT_TEMPLATE_DIR="$PWD/templates/fleet-inventory"
+          python3 tools/fleet inventory init /tmp/fleet-ci-inv --name fleet-ci-inv
+          test -f /tmp/fleet-ci-inv/flake.nix
+          test -f /tmp/fleet-ci-inv/hosts/default.nix
+          cd /tmp/fleet-ci-inv
+          python3 "$GITHUB_WORKSPACE/tools/fleet" inventory doctor || true
