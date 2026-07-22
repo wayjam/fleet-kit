@@ -1,0 +1,9 @@
+# Private-only just recipes (optional).
+#
+# This file is imported by Justfile via `import? "Justfile.local"` and is
+# never overwritten by `just up`. Add host-specific recipes here, e.g.:
+#
+# [macos]
+# darwin-build host="my-mac":
+#   nix build .#darwinConfigurations.{{host}}.system
+#   sudo ./result/sw/bin/darwin-rebuild switch --flake .#{{host}}

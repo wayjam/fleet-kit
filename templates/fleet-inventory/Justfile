@@ -12,9 +12,9 @@
 #   nix run .#fleet -- image --help
 #   nix run .#fleet -- inventory --help
 #
-# Mac nix-darwin recipes (darwin-build / darwin-debug) are private-only and are
-# NOT in this template — add them in your private Justfile if needed. Running
-# `just up` rewrites this file from the template and will drop private-only recipes.
+# Private-only recipes (e.g. darwin-build) live in Justfile.local and are
+# pulled in via `import?` below. `just up` only rewrites this file — Justfile.local
+# is never touched.
 
 default:
   @just --list
@@ -148,6 +148,9 @@ sops-rotate-hint:
 ############################################################################
 
 # Regenerate this Justfile from the fleet template (source of truth).
-# Warning: drops private-only recipes (e.g. darwin-build) — re-add after.
+# Does NOT touch Justfile.local (private-only recipes stay there).
 up:
   nix run --refresh .#fleet -- justfile render --output Justfile
+
+# Optional private recipes (darwin-build, …). Missing file is ignored.
+import? "Justfile.local"
