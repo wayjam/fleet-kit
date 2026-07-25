@@ -395,6 +395,20 @@ def cmd_inventory_init(args, config):
             subprocess.run(["git", "init"], cwd=dest, check=True)
             print("fleet inventory init: git init", flush=True)
 
+    # Agent skills: symlink to kit (sibling layout ../fleet-kit/skills)
+    try:
+        kit_skills = dest.parent / "fleet-kit" / "skills"
+        if kit_skills.is_dir():
+            link_inventory_skills(dest, kit_skills=kit_skills)
+        else:
+            print(
+                "fleet inventory init: skip skills-link (no sibling fleet-kit/skills); "
+                "run: just skills-link later",
+                flush=True,
+            )
+    except Exception as exc:
+        print(f"fleet inventory init: skills-link failed: {exc}", flush=True)
+
     if args.lock:
         print("fleet inventory init: nix flake lock …", flush=True)
         subprocess.run(["nix", "flake", "lock"], cwd=dest, check=True)
@@ -665,6 +679,81 @@ def cmd_inventory_doctor(args, config):
         sys.exit(1)
 
 
+
+
+def kit_skills_root() -> Path:
+    """Resolve fleet-kit/skills from env, sibling, or source layout."""
+    env = os.environ.get("FLEET_KIT_SKILLS_DIR")
+    if env:
+        p = Path(env).expanduser().resolve()
+        if p.is_dir():
+            return p
+    # sibling of inventory cwd
+    sibling = repo_root().parent / "fleet-kit" / "skills"
+    if sibling.is_dir():
+        return sibling
+    # from tools/fleet -> ../../skills
+    here = Path(__file__).resolve().parent
+    cand = here.parent.parent / "skills"
+    if cand.is_dir():
+        return cand
+    # template dir parent
+    try:
+        t = template_dir().parent.parent / "skills"  # templates/ -> kit root
+        if t.is_dir():
+            return t
+    except Exception:
+        pass
+    die(
+        "cannot find fleet-kit/skills; set FLEET_KIT_SKILLS_DIR or place inventory "
+        "next to fleet-kit"
+    )
+
+
+def link_inventory_skills(dest: Path | None = None, *, kit_skills: Path | None = None) -> None:
+    """Create skills/* symlinks to kit and .claude/skills -> ./skills."""
+    root = dest or repo_root()
+    kit_skills = kit_skills or kit_skills_root()
+    skills_dir = root / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("add-host", "debug-deploy"):
+        src = kit_skills / name
+        if not src.is_dir():
+            print(f"warning: missing kit skill {src}", flush=True)
+            continue
+        link = skills_dir / name
+        # relative target from skills/name -> kit skill
+        try:
+            rel = os.path.relpath(src, start=skills_dir)
+        except ValueError:
+            rel = str(src)
+        if link.is_symlink() or link.exists():
+            if link.is_symlink() or link.is_dir():
+                if link.is_symlink():
+                    link.unlink()
+                else:
+                    # do not delete real dirs with content
+                    print(f"warning: {link} exists and is not a symlink; skip", flush=True)
+                    continue
+        link.symlink_to(rel, target_is_directory=True)
+        print(f"fleet skills-link: {link} -> {rel}", flush=True)
+
+    claude = root / ".claude"
+    claude.mkdir(parents=True, exist_ok=True)
+    claude_skills = claude / "skills"
+    if claude_skills.is_symlink():
+        claude_skills.unlink()
+    elif claude_skills.exists():
+        print(f"warning: {claude_skills} exists and is not a symlink; skip", flush=True)
+        return
+    claude_skills.symlink_to("skills", target_is_directory=True)
+    print(f"fleet skills-link: {claude_skills} -> skills", flush=True)
+
+
+def cmd_inventory_skills_link(args, config):
+    link_inventory_skills()
+
+
 def cmd_inventory(args, config):
     """Dispatch inventory subcommands (set by argparse)."""
     cmd = getattr(args, "inventory_command", None)
@@ -676,4 +765,6 @@ def cmd_inventory(args, config):
         return cmd_inventory_add_host(args, config)
     if cmd == "doctor":
         return cmd_inventory_doctor(args, config)
+    if cmd == "skills-link":
+        return cmd_inventory_skills_link(args, config)
     die(f"unknown inventory command: {cmd}")

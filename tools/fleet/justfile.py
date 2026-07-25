@@ -155,6 +155,10 @@ sops-rotate-hint:
 # meta
 ############################################################################
 
+# Symlink skills/* -> ../fleet-kit/skills/* and .claude/skills -> ./skills
+skills-link:
+  nix run .#fleet -- inventory skills-link
+
 # Regenerate this Justfile from the fleet template (source of truth).
 # Does NOT touch Justfile.local (private-only recipes stay there).
 up:

@@ -81,6 +81,7 @@
           ];
         text = ''
           export FLEET_KIT_TEMPLATE_DIR='${./templates/fleet-inventory}'
+          export FLEET_KIT_SKILLS_DIR='${./skills}'
           exec ${pkgs.python3}/bin/python3 ${./tools/fleet} "$@"
         '';
       };

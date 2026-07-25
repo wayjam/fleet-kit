@@ -299,6 +299,12 @@ def build_parser():
     )
     p.set_defaults(func=cmd_inventory)
 
+    p = inventory_sub.add_parser(
+        "skills-link",
+        help="symlink skills/* to fleet-kit/skills and .claude/skills -> ./skills",
+    )
+    p.set_defaults(func=cmd_inventory)
+
     # -- doctor ---------------------------------------------------------------
     p = sub.add_parser("doctor", help="diagnose inventory, lock, and builder")
     p.add_argument(
