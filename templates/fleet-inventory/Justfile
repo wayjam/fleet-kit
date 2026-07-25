@@ -147,14 +147,19 @@ sops-rotate-hint:
 # meta
 ############################################################################
 
-# Symlink skills/* -> ../fleet-kit/skills/* and .claude/skills -> ./skills
-skills-link:
-  nix run .#fleet -- inventory skills-link
 
-# Regenerate this Justfile from the fleet template (source of truth).
-# Does NOT touch Justfile.local (private-only recipes stay there).
+# Refresh inventory tooling from fleet-kit:
+#   1) regenerate this Justfile (not Justfile.local)
+#   2) relink skills/* and .claude/skills
+#   3) update flake input fleetkit (path/github pin)
 up:
   nix run --refresh .#fleet -- justfile render --output Justfile
+  nix run --refresh .#fleet -- inventory skills-link
+  nix flake update fleetkit
+
+# Symlink skills/* -> kit skills and .claude/skills -> ./skills (also part of `up`)
+skills-link:
+  nix run .#fleet -- inventory skills-link
 
 # Optional private recipes (darwin-build, …). Missing file is ignored.
 import? "Justfile.local"
