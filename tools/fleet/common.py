@@ -138,6 +138,37 @@ def run(argv, *, env=None, cwd=None):
         raise subprocess.CalledProcessError(proc.returncode, argv)
 
 
+def run_logged(argv, log_path, *, env=None, cwd=None):
+    """Run a command while streaming combined output and persisting a log."""
+    printable = " ".join(shlex.quote(str(a)) for a in argv)
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"+ {printable}", file=sys.stderr)
+    proc = subprocess.Popen(
+        [str(a) for a in argv],
+        env=env,
+        cwd=cwd,
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    try:
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(f"$ {printable}\n")
+            for line in proc.stdout or ():
+                sys.stderr.write(line)
+                sys.stderr.flush()
+                log.write(line)
+            proc.wait()
+    except KeyboardInterrupt:
+        _terminate_subprocess(proc)
+        raise
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, argv)
+
+
 def capture(argv, *, env=None, cwd=None):
     """Capture stdout of *argv*; on Ctrl+C, escalate-kill the child group."""
     proc = subprocess.Popen(

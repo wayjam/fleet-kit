@@ -108,6 +108,9 @@ infect host *args:
   nix run .#fleet -- infect {{host}} {{args}}
 
 # Fresh NixOS install via nixos-anywhere — `just install <host> [fleet flags...]`
+# ARM example: `just install orcl-nl-arm --ssh-target root@141.144.197.33:2234 --backup-ref oci://... --dry-run`
+# Installation stages: preflight → prepare-target → kexec → disko → install → verify.
+# Real destructive runs require --backup-ref (or explicit --allow-no-backup).
 install host *args:
   nix run .#fleet -- install {{host}} {{args}}
 

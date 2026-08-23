@@ -64,7 +64,9 @@ just deploy @proxy
 ### `just deploy-remote <target> [builder]`
 
 Sync the local public and private worktrees to a remote builder, then deploy
-from that builder with Colmena.
+from that builder with Colmena. Builder SSH uses an explicit connection timeout
+and retries transient rsync/tar transport failures automatically before the
+stage runner asks for a manual resume.
 
 ```shell
 just deploy-remote aws-jp1 builder
@@ -78,37 +80,45 @@ Deploy all Colmena hosts.
 just deploy-all
 ```
 
-### `just install <host> <ssh-target>`
+### `just install <host> [fleet flags]`
 
-Install a fresh NixOS host with `nixos-anywhere`.
+Install a fresh NixOS host with `nixos-anywhere`. The command runs six stages:
+read-only `preflight`, non-destructive `prepare-target`, then separately tracked
+`kexec`, `disko`, `install`, and post-reboot `verify`. `disko` is the stage that
+erases the configured target disk. Each nixos-anywhere phase is logged locally,
+and a failed destructive stage is not retried or continued by default.
+Use `--dry-run` to print all phase commands without connecting to the target.
 
-```shell
-just install aws-jp1 root@203.0.113.10
-```
-
-### `just install-port <host> <port> <ssh-target>`
-
-Install a fresh NixOS host over a custom SSH port.
-
-```shell
-just install-port aws-jp1 2234 root@203.0.113.10
-```
-
-### `just install-kexec-syscall <host> <ssh-target>`
-
-Install with `nixos-anywhere --kexec-syscall`.
+For a Debian ARM host currently using SSH port 2234:
 
 ```shell
-just install-kexec-syscall aws-jp1 root@203.0.113.10
+just install orcl-nl-arm \
+  --ssh-target root@141.144.197.33:2234 \
+  --build-on remote \
+  --kexec-syscall \
+  --backup-ref 'oci://<boot-volume-backup-or-full-backup-id>' \
+  --dry-run
 ```
 
-### `just install-port-kexec-syscall <host> <port> <ssh-target>`
-
-Install over a custom SSH port with `nixos-anywhere --kexec-syscall`.
+After reviewing the dry-run, run preflight only:
 
 ```shell
-just install-port-kexec-syscall aws-jp1 2234 root@203.0.113.10
+just install orcl-nl-arm \
+  --ssh-target root@141.144.197.33:2234 \
+  --stop-after preflight
 ```
+
+Preparation installs only `kexec-tools` on Debian/Ubuntu. The final NixOS SSH
+port is taken from the host configuration (`2234` here); kexec and installer SSH
+use port `22` via `--post-kexec-ssh-port 22`. Before a real destructive run,
+pass the provider backup reference with `--backup-ref` and add `--yes` after
+reviewing the dry-run. If no backup exists, `--allow-no-backup` is an explicit
+risk acknowledgement. If `disko` or `install` fails, resume from that stage,
+for example `--resume --from-stage disko` or `--resume --from-stage install`;
+do not restart from `kexec` unless the installer state is known to be gone.
+Destructive retry is disabled by default; `--retry-destructive` first probes
+the stage's SSH endpoint, saves fresh failure state, and requires typing the
+stage name again before repeating the operation.
 
 ### `just infect <host> [ssh-target] [builder]`
 

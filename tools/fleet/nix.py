@@ -32,7 +32,12 @@ def maybe_nix_eval_json(attr):
 
 
 def nix_eval_raw(attr):
-    return capture(["nix", "eval", attr, "--raw"]).strip()
+    # `--raw` only accepts Nix strings. Host options such as SSH ports are
+    # integers, so evaluate as JSON and normalize scalar values here.
+    value = json.loads(capture(["nix", "eval", attr, "--json"]))
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    raise TypeError(f"expected a scalar Nix value for {attr}, got {type(value).__name__}")
 
 
 def sops_env(config):

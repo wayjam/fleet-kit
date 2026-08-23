@@ -57,6 +57,8 @@ class Stage:
     retryable: bool = True      # may be auto-retried (also subject to --retry)
     skippable: bool = False     # may be skipped in interactive mode
     destructive: bool = False   # destructive: only retry after explicit confirm
+    continueable: bool = True   # may be marked done after a failure in a TTY
+    retry_probe: Callable[[RunContext], bool] | None = None
     cleanup: Callable[[RunContext, str], None] | None = None  # (ctx, reason)
     interrupt_policy: InterruptPolicy = "prompt"  # default Ctrl+C behavior
 
@@ -183,10 +185,17 @@ def resume_hint(ctx: RunContext, stages: list[Stage], failed_stage: str) -> str:
 def _interactive_failure_prompt(ctx: RunContext, stage: Stage, attempt: int, exc: Exception) -> FailureAction:
     """Prompt the user for a failure action in TTY mode."""
     print(f"\n[fleet] Stage '{stage.name}' failed (attempt {attempt}): {exc}", file=sys.stderr)
-    options = ["(r)etry", "(a)bort"]
+    options = []
+    if (
+        not stage.destructive
+        or (getattr(ctx.args, "retry_destructive", False) and stage.retry_probe is not None)
+    ):
+        options.append("(r)etry")
+    options.append("(a)bort")
     if stage.skippable:
         options.append("(s)kip")
-    options.append("(c)ontinue")  # treat as success, continue to next stage
+    if not stage.destructive and stage.continueable:
+        options.append("(c)ontinue")  # treat as success, continue to next stage
     options.append("(l)og")       # show recent log lines then re-prompt
     prompt = f"[fleet] Choose: {' '.join(options)} > "
     while True:
@@ -195,13 +204,45 @@ def _interactive_failure_prompt(ctx: RunContext, stage: Stage, attempt: int, exc
         except (EOFError, KeyboardInterrupt):
             return "abort"
         if answer in ("r", "retry"):
-            return "retry"
+            if not stage.destructive:
+                return "retry"
+            if not getattr(ctx.args, "retry_destructive", False):
+                print("  destructive retry requires --retry-destructive", file=sys.stderr)
+                continue
+            if stage.retry_probe is None:
+                print("  destructive retry is unavailable: this stage has no retry probe", file=sys.stderr)
+                continue
+            print("  re-probing target state before destructive retry ...", file=sys.stderr)
+            try:
+                probe_ok = stage.retry_probe(ctx)
+            except Exception as probe_exc:
+                print(f"  retry probe failed: {probe_exc}", file=sys.stderr)
+                continue
+            if not probe_ok:
+                print(
+                    "  retry blocked: target state is not suitable for retry; "
+                    "inspect the failure-state log and resume from the appropriate stage",
+                    file=sys.stderr,
+                )
+                continue
+            print(
+                f"  retry probe passed for '{stage.name}'. This may repeat a destructive operation.",
+                file=sys.stderr,
+            )
+            try:
+                confirmed = input(f"  Type the stage name to confirm retry ({stage.name}): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return "abort"
+            if confirmed == stage.name:
+                return "retry"
+            print("  retry confirmation did not match; staying at failure prompt", file=sys.stderr)
+            continue
+        if answer in ("c", "continue") and not stage.destructive and stage.continueable:
+            return "continue"
         if answer in ("a", "abort"):
             return "abort"
         if answer in ("s", "skip") and stage.skippable:
             return "skip"
-        if answer in ("c", "continue"):
-            return "continue"
         if answer in ("l", "log"):
             _show_recent_log(ctx, stage)
             continue
@@ -334,6 +375,8 @@ class StageRunner:
                         print(f"[fleet] stage '{stage.name}' skipped by user.", file=sys.stderr)
                         return
                     if action == "continue":
+                        if stage.destructive or not stage.continueable:
+                            die(f"stage '{stage.name}' cannot be continued after failure")
                         mark_stage_done(ctx, stage.name)
                         print(f"[fleet] stage '{stage.name}' marked done by user (continue).", file=sys.stderr)
                         return

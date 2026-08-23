@@ -100,6 +100,7 @@ infect host *args:
   nix run .#fleet -- infect {{host}} {{args}}
 
 # Fresh NixOS install via nixos-anywhere — `just install <host> [fleet flags...]`
+# Real destructive runs require `--backup-ref` or explicit `--allow-no-backup`.
 install host *args:
   nix run .#fleet -- install {{host}} {{args}}
 

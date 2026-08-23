@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from common import die, parse_bool, remote_repo_path, repo_path, repo_root, run
@@ -22,6 +23,8 @@ NIX_PROBE = (
     "printf %s /run/current-system/sw/bin/nix; "
     "else exit 127; fi"
 )
+
+SYNC_RETRIES = 3
 
 
 def reject_scp_port(value):
@@ -151,6 +154,8 @@ def ssh_options():
     return [
         "-o", "BatchMode=yes",
         "-o", "StrictHostKeyChecking=accept-new",
+        "-o", "ConnectTimeout=20",
+        "-o", "ConnectionAttempts=2",
         "-o", "ServerAliveInterval=15",
         "-o", "ServerAliveCountMax=6",
         "-o", "TCPKeepAlive=yes",
@@ -287,16 +292,31 @@ def _local_has_rsync() -> bool:
 
 
 def _remote_has_rsync(builder) -> bool:
-    try:
-        proc = subprocess.run(
-            [*ssh_args(builder), "command -v rsync >/dev/null"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+    for attempt in range(SYNC_RETRIES + 1):
+        try:
+            proc = subprocess.run(
+                [*ssh_args(builder), "command -v rsync >/dev/null"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            proc = None
+        except OSError:
+            return False
+        if proc is not None and proc.returncode == 0:
+            return True
+        retryable = proc is None or proc.returncode == 255
+        if not retryable or attempt >= SYNC_RETRIES:
+            return False
+        delay = min(2 ** attempt, 10)
+        print(
+            f"fleet sync: builder rsync probe failed; retry {attempt + 1}/{SYNC_RETRIES} in {delay}s",
+            file=sys.stderr,
         )
-        return proc.returncode == 0
-    except OSError:
-        return False
+        time.sleep(delay)
+    return False
 
 
 def resolve_sync_method(config, builder) -> str:
@@ -402,6 +422,29 @@ def _sync_repos_tar(builder, parent: Path, names: list[str], remote_root: str) -
         raise subprocess.CalledProcessError(ssh_code, ssh_cmd)
 
 
+def _sync_transport_retryable(exc: Exception) -> bool:
+    if not isinstance(exc, subprocess.CalledProcessError):
+        return isinstance(exc, (OSError, subprocess.TimeoutExpired))
+    return exc.returncode in {12, 30, 255}
+
+
+def _sync_with_retry(operation, description: str):
+    for attempt in range(SYNC_RETRIES + 1):
+        try:
+            return operation()
+        except Exception as exc:
+            if not _sync_transport_retryable(exc) or attempt >= SYNC_RETRIES:
+                raise
+            delay = min(2 ** attempt, 15)
+            print(
+                f"fleet sync: {description} failed ({exc}); "
+                f"retry {attempt + 1}/{SYNC_RETRIES} in {delay}s",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
+    return None
+
+
 def sync_to_builder(config, builder, *, dry_run: bool = False):
     """Sync inventory (always) and public kit (only when fleetkit is a path input).
 
@@ -454,12 +497,18 @@ def sync_to_builder(config, builder, *, dry_run: bool = False):
         return
 
     if method == "rsync":
-        for name in names:
-            local_dir = parent / name
-            remote_dir = f"{remote_root}/{name}"
-            _sync_repo_rsync(builder, local_dir, remote_dir)
+        def sync_rsync():
+            for name in names:
+                local_dir = parent / name
+                remote_dir = f"{remote_root}/{name}"
+                _sync_repo_rsync(builder, local_dir, remote_dir)
+
+        _sync_with_retry(sync_rsync, "rsync transport")
     else:
-        _sync_repos_tar(builder, parent, names, remote_root)
+        _sync_with_retry(
+            lambda: _sync_repos_tar(builder, parent, names, remote_root),
+            "tar/ssh transport",
+        )
 
 
 def lock_fleetkit_on_builder(config, builder) -> None:

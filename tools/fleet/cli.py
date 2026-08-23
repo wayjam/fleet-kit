@@ -95,8 +95,28 @@ def build_parser():
     p = sub.add_parser("install")
     p.add_argument("host")
     p.add_argument("--ssh-target", default="root@localhost:22")
-    p.add_argument("--kexec-syscall", action="store_true")
+    p.add_argument("--build-on", choices=("auto", "remote", "local"), default="auto")
+    p.add_argument("--prepare-target", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--kexec-syscall", action=argparse.BooleanOptionalAction, default=None)
+    p.add_argument("--post-kexec-ssh-port", type=int, default=22)
+    p.add_argument("--copy-host-keys", action="store_true")
+    p.add_argument("--print-build-logs", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
     p.add_argument("--yes", action="store_true", help="skip destructive confirmation")
+    p.add_argument(
+        "--backup-ref",
+        help="provider backup or snapshot reference recorded before disk installation",
+    )
+    p.add_argument(
+        "--allow-no-backup",
+        action="store_true",
+        help="explicitly acknowledge that no provider backup reference is available",
+    )
+    p.add_argument(
+        "--retry-destructive",
+        action="store_true",
+        help="allow interactive retry after a target-state probe and explicit confirmation",
+    )
     add_orchestration_options(p)
     p.set_defaults(func=cmd_install)
 

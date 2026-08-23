@@ -417,12 +417,66 @@ Recommended `imageSize` values:
 ## Scenario B: Install Directly With nixos-anywhere
 
 Use this when the host can boot the provider OS or rescue system and SSH is
-available.
+available. `fleet install` adds target preflight, optional Debian/Ubuntu
+`kexec-tools` preparation, secure age-key injection, per-phase resume markers,
+local logs/failure probes, and final SSH plus configuration health verification.
 
-Run from the private inventory:
+Run a non-destructive dry-run first:
 
 ```shell
 cd ~/deploy/fleet-private
+just install jp-proxy-01 \
+  --ssh-target root@203.0.113.10:12345 \
+  --dry-run
+```
+
+For an ARM target, the default build mode is remote and syscall kexec is
+enabled automatically. The explicit form is:
+
+```shell
+just install orcl-nl-arm \
+  --ssh-target root@141.144.197.33:2234 \
+  --build-on remote \
+  --kexec-syscall \
+  --backup-ref 'oci://<boot-volume-backup-or-full-backup-id>' \
+  --dry-run
+```
+
+Run only the read-only preflight before preparing the target:
+
+```shell
+just install jp-proxy-01 \
+  --ssh-target root@203.0.113.10:12345 \
+  --stop-after preflight
+```
+
+Preparation is limited to installing `kexec-tools` on Debian/Ubuntu and does
+not erase the disk. The flow then tracks `kexec`, `disko`, and `install` as
+separate nixos-anywhere phases; `disko` erases the target disk. A real run must
+include the provider backup reference via `--backup-ref`; use `--allow-no-backup`
+only to explicitly accept the absence of a recovery point. Review the dry-run
+and use `--yes` only for the explicit operation. The original SSH port is
+passed with `--ssh-port`, kexec and installer SSH use port 22 by default, and
+final NixOS SSH uses the host configuration's port.
+
+When a phase fails, inspect `.fleet/logs/install-<host>/` and resume with the
+same backup flag, for example:
+
+```shell
+just install orcl-nl-arm \
+  --ssh-target root@141.144.197.33:2234 \
+  --backup-ref 'oci://<backup-id>' \
+  --resume --from-stage install --yes
+```
+
+The runner never offers `continue` for a destructive phase. It will only offer
+destructive retry with `--retry-destructive`; selecting it first probes the
+phase's SSH endpoint, saves fresh failure state, and requires typing the stage
+name again before repeating the operation.
+
+For a direct manual invocation without the fleet stage runner:
+
+```shell
 nixos-anywhere --flake .#jp-proxy-01 root@203.0.113.10
 ```
 

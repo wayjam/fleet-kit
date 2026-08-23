@@ -47,7 +47,10 @@ in {
 
   users.mutableUsers = false;
   users.users = {
-    root.openssh.authorizedKeys.keys = myvars.sshAuthorizedKeys;
+    root = {
+      hashedPassword = myvars.hashedPassword;
+      openssh.authorizedKeys.keys = myvars.sshAuthorizedKeys;
+    };
     admin = {
       isNormalUser = true;
       extraGroups = ["wheel"];
