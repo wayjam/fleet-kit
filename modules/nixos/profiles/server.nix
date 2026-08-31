@@ -8,6 +8,7 @@
     ../../nix-core.nix
     ../../shared/server/base.nix
     ../secrets/sops-age-key.nix
+    ../server/journald.nix
     ../server/ssh.nix
     ../server/firewall.nix
     ../server/fail2ban.nix

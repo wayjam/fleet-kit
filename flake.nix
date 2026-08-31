@@ -105,6 +105,7 @@
         profiles-builder = ./modules/nixos/profiles/builder.nix;
         container = ./modules/nixos/container;
         server-ssh = ./modules/nixos/server/ssh.nix;
+        server-journald = ./modules/nixos/server/journald.nix;
         server-firewall = ./modules/nixos/server/firewall.nix;
         server-fail2ban = ./modules/nixos/server/fail2ban.nix;
         server-disk-expansion = ./modules/nixos/server/disk-expansion.nix;
