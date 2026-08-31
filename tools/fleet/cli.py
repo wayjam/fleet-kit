@@ -321,7 +321,7 @@ def build_parser():
 
     p = inventory_sub.add_parser(
         "skills-link",
-        help="symlink skills/* to fleet-kit/skills and .claude/skills -> ./skills",
+        help="symlink skills/* to fleet-kit/skills and .claude/skills -> ../skills",
     )
     p.set_defaults(func=cmd_inventory)
 

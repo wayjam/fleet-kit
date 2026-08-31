@@ -38,3 +38,7 @@ jobs:
           test -f /tmp/fleet-ci-inv/hosts/default.nix
           cd /tmp/fleet-ci-inv
           python3 "$GITHUB_WORKSPACE/tools/fleet" inventory doctor || true
+          export FLEET_KIT_SKILLS_DIR="$GITHUB_WORKSPACE/skills"
+          python3 "$GITHUB_WORKSPACE/tools/fleet" inventory skills-link
+          test "$(readlink .claude/skills)" = "../skills"
+          test -f .claude/skills/add-host/SKILL.md

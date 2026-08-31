@@ -78,7 +78,7 @@ Private inventories should symlink:
 ```text
 skills/add-host      -> ../fleet-kit/skills/add-host
 skills/debug-deploy  -> ../fleet-kit/skills/debug-deploy
-.claude/skills       -> ./skills
+.claude/skills       -> ../skills
 ```
 
 Recreate with `just skills-link` (inventory) or `fleet inventory skills-link`.

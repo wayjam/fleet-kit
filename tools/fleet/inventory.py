@@ -107,6 +107,12 @@ def _default_fleetkit_url(dest: Path) -> str:
     return "path:../fleet-kit"
 
 
+def _ignore_symlinks(path: str, names: list[str]) -> set[str]:
+    """Skip template symlinks; inventory init recreates managed links later."""
+    root = Path(path)
+    return {name for name in names if (root / name).is_symlink()}
+
+
 def _valid_host_name(name: str) -> bool:
     return bool(re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]*", name))
 
@@ -380,8 +386,15 @@ def cmd_inventory_init(args, config):
 
     for entry in src.iterdir():
         target = dest / entry.name
+        if entry.is_symlink():
+            continue
         if entry.is_dir():
-            shutil.copytree(entry, target, dirs_exist_ok=False)
+            shutil.copytree(
+                entry,
+                target,
+                dirs_exist_ok=False,
+                ignore=_ignore_symlinks,
+            )
         else:
             shutil.copy2(entry, target)
 
@@ -717,7 +730,7 @@ def kit_skills_root() -> Path:
 
 
 def link_inventory_skills(dest: Path | None = None, *, kit_skills: Path | None = None) -> None:
-    """Create skills/* symlinks to kit and .claude/skills -> ./skills."""
+    """Create skills/* symlinks to kit and .claude/skills -> ../skills."""
     root = dest or repo_root()
     kit_skills = kit_skills or kit_skills_root()
     skills_dir = root / "skills"
@@ -752,8 +765,8 @@ def link_inventory_skills(dest: Path | None = None, *, kit_skills: Path | None =
     elif claude_skills.exists():
         print(f"warning: {claude_skills} exists and is not a symlink; skip", flush=True)
         return
-    claude_skills.symlink_to("skills", target_is_directory=True)
-    print(f"fleet skills-link: {claude_skills} -> skills", flush=True)
+    claude_skills.symlink_to("../skills", target_is_directory=True)
+    print(f"fleet skills-link: {claude_skills} -> ../skills", flush=True)
 
 
 def cmd_inventory_skills_link(args, config):

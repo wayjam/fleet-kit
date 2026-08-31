@@ -168,7 +168,7 @@ up:
   nix run --refresh .#fleet -- inventory skills-link
   nix flake update fleetkit
 
-# Symlink skills/* -> kit skills and .claude/skills -> ./skills (also part of `up`)
+# Symlink skills/* -> kit skills and .claude/skills -> ../skills (also part of `up`)
 skills-link:
   nix run .#fleet -- inventory skills-link
 
