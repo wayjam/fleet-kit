@@ -103,6 +103,7 @@
         profiles-server = ./modules/nixos/profiles/server.nix;
         profiles-kvm-server = ./modules/nixos/profiles/kvm-server.nix;
         profiles-builder = ./modules/nixos/profiles/builder.nix;
+        container = ./modules/nixos/container;
         server-ssh = ./modules/nixos/server/ssh.nix;
         server-firewall = ./modules/nixos/server/firewall.nix;
         server-fail2ban = ./modules/nixos/server/fail2ban.nix;

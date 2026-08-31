@@ -7,8 +7,8 @@
 with lib; let
   cfg = config.my.container;
 in {
-  options.my.dev = {
-    enable = mkEnableOption "Container";
+  options.my.container = {
+    enable = mkEnableOption "Podman container support";
   };
 
   config = mkIf cfg.enable {
@@ -31,11 +31,6 @@ in {
       # docker-compose # start group of containers for dev
       podman-compose # start group of containers for dev
     ];
-
-    users.users.myuser = {
-      isNormalUser = true;
-      extraGroups = ["podman"];
-    };
 
     virtualisation.oci-containers.backend = "podman";
     # https://wiki.nixos.org/wiki/Podman

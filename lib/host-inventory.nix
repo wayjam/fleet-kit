@@ -33,6 +33,15 @@ in rec {
       meta = {
         nixpkgs = pkgs;
         specialArgs = {inherit inputs;};
+        # Hosts with a non-default system need their own nixpkgs so Colmena
+        # evaluates the correct architecture (e.g. aarch64-linux image hosts).
+        nodeNixpkgs = lib.mapAttrs (_: host: let
+          hostSystem = host.system or system;
+        in
+          if hostSystem == system
+          then pkgs
+          else import inputs.nixpkgs {system = hostSystem;})
+        inventory.nixos;
       };
     }
     // (builtins.mapAttrs (hostName: host: {
@@ -50,6 +59,7 @@ in rec {
     system ? "x86_64-linux",
   }: let
     pkgs = import nixpkgs {inherit system;};
+    hostSystem = host: host.system or system;
   in {
     formatter = lib.genAttrs supportedSystems (
       formatterSystem: nixpkgs.legacyPackages.${formatterSystem}.alejandra
@@ -96,15 +106,20 @@ in rec {
 
     nixosConfigurations = lib.mapAttrs (hostName: host:
       nixpkgs.lib.nixosSystem {
-        inherit system;
+        system = hostSystem host;
         specialArgs = {inherit inputs hostName;};
         modules = mkNixosModuleList hostName host;
       })
     inventory.nixos;
 
-    packages.${system} = lib.mapAttrs (name: _:
-      self.nixosConfigurations.${name}.config.system.build.diskoImages)
-    (lib.filterAttrs (_: host: host.image or false) inventory.nixos);
+    packages = lib.foldlAttrs (acc: name: host:
+      if host.image or false
+      then
+        lib.recursiveUpdate acc {
+          ${hostSystem host}.${name} =
+            self.nixosConfigurations.${name}.config.system.build.diskoImages;
+        }
+      else acc) {} inventory.nixos;
 
     systemConfigs = lib.mapAttrs (_: host:
       system-manager.lib.makeSystemConfig {

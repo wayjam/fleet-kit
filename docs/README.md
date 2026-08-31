@@ -86,6 +86,7 @@ Optional service modules:
 - `nixosModules.proxy-realm`
 - `nixosModules.monitoring-komari-agent`
 - `nixosModules.web-caddy`
+- `nixosModules.container`
 - `nixosModules.vpn-wireguard`
 
 Reusable lower-level modules:

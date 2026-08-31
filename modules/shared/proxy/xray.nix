@@ -54,6 +54,26 @@
         description = "VLESS transport type.";
       };
 
+      ws = {
+        path = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = "WebSocket path. Prefer pathFile for production secrets.";
+        };
+
+        pathFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Runtime file containing the WebSocket path.";
+        };
+
+        host = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = "Optional WebSocket Host header.";
+        };
+      };
+
       xhttp = {
         path = lib.mkOption {
           type = lib.types.str;
@@ -155,6 +175,13 @@
       if inbound.passwordFile == null
       then ""
       else inbound.passwordFile;
+    ws = {
+      inherit (inbound.ws) path host;
+      pathFile =
+        if inbound.ws.pathFile == null
+        then ""
+        else inbound.ws.pathFile;
+    };
     xhttp = {
       inherit (inbound.xhttp) path host mode settings;
       pathFile =
@@ -230,6 +257,19 @@
               "shortIds": source["reality"]["shortIds"],
             },
           }
+
+        if source["transport"] == "ws":
+          ws = source["ws"]
+          ws_settings = {}
+          path = ws["path"]
+          if ws["pathFile"]:
+            path = Path(ws["pathFile"]).read_text().strip()
+          if path:
+            ws_settings["path"] = path
+          if ws["host"]:
+            ws_settings["headers"] = {"Host": ws["host"]}
+          if ws_settings:
+            stream_settings["wsSettings"] = ws_settings
 
         if source["transport"] == "xhttp":
           xhttp = source["xhttp"]
@@ -348,6 +388,15 @@ in {
                 || inbound.xhttp.path != ""
                 || inbound.xhttp.settings ? path;
               message = "my.proxy.xray.inbounds.${name}.xhttp.pathFile, xhttp.path, or xhttp.settings.path is required when transport is xhttp.";
+            }
+            {
+              assertion =
+                inbound.type
+                != "vless"
+                || inbound.transport != "ws"
+                || inbound.ws.pathFile != null
+                || inbound.ws.path != "";
+              message = "my.proxy.xray.inbounds.${name}.ws.pathFile or ws.path is required when transport is ws.";
             }
             {
               assertion = inbound.type != "shadowsocks" || inbound.passwordFile != null;

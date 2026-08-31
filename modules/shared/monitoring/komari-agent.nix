@@ -18,7 +18,13 @@
             url = "https://github.com/komari-monitor/komari-agent/releases/download/1.2.13/komari-agent-linux-amd64";
             hash = "sha256-2ExuN4FqLKNcJYPSAESxWBCbmT4Ts85fr89f30RrVzY=";
           }
-        else throw "komari-agent fallback package currently supports only x86_64-linux.";
+        else if pkgs.stdenv.hostPlatform.system == "aarch64-linux"
+        then
+          pkgs.fetchurl {
+            url = "https://github.com/komari-monitor/komari-agent/releases/download/1.2.13/komari-agent-linux-arm64";
+            hash = "sha256-+kQel6ZVYLb8N2lykmtnD+XKQH3xJKgGqWo8S6Ud+Gg=";
+          }
+        else throw "komari-agent fallback package currently supports only x86_64-linux and aarch64-linux.";
 
       dontUnpack = true;
 
