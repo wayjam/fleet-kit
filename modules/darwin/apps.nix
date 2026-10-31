@@ -77,10 +77,6 @@
       "antigravity"
 
       # tools
-      "appcleaner"
-      "keyboard-cleaner"
-      "mac-mouse-fix"
-      "snipaste"
       "omnidisksweeper"
       "the-unarchiver"
       "raycast"

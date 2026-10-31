@@ -37,6 +37,16 @@ from stale import check_path_fleetkit_stale
 from common import load_config
 
 
+def _nonnegative_int(value):
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be 0 or greater")
+    return number
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="fleet")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -95,6 +105,13 @@ def build_parser():
     p = sub.add_parser("install")
     p.add_argument("host")
     p.add_argument("--ssh-target", default="root@localhost:22")
+    p.add_argument(
+        "--min-memory-mib",
+        type=_nonnegative_int,
+        default=4096,
+        metavar="MIB",
+        help="minimum target RAM for install preflight (default: 4096; 0 disables the check)",
+    )
     p.add_argument("--build-on", choices=("auto", "remote", "local"), default="auto")
     p.add_argument("--prepare-target", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--kexec-syscall", action=argparse.BooleanOptionalAction, default=None)

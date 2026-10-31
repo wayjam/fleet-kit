@@ -450,6 +450,12 @@ just install jp-proxy-01 \
   --stop-after preflight
 ```
 
+The preflight defaults to requiring 4096 MiB of target RAM. Override the
+conservative threshold with `--min-memory-mib <MiB>`; use `0` to disable this
+check. Lowering or disabling it does not make a low-memory installation safe:
+kexec or the installer may still run out of memory and leave the host
+unreachable.
+
 Preparation is limited to installing `kexec-tools` on Debian/Ubuntu and does
 not erase the disk. The flow then tracks `kexec`, `disko`, and `install` as
 separate nixos-anywhere phases; `disko` erases the target disk. A real run must

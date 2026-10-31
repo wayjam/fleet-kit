@@ -69,6 +69,31 @@ Rule of thumb:
 - If an error path contains `/nix/store/...-source/...`, verify which flake
   snapshot is being evaluated.
 
+## Builder Can Reach the Target Only After Its Key Is Installed
+
+`fleet deploy <host> --builder <name>` now checks SSH from the builder to the
+target before starting Colmena. This matters on the first deployment from an
+older system generation: the new NixOS configuration may authorize the builder
+key, while the currently running generation still does not. Add the builder's
+public key through the current access path (or use a controlled temporary
+bootstrap), then resume at `target-preflight`; do not rebuild the closure just
+to discover that SSH authorization is missing.
+
+## Activation Returns an Error After the New Generation Is Active
+
+Do not immediately retry an `apply` that reports an activation error. First
+check `nixos-version`, `/run/current-system`, `systemctl is-system-running`,
+`systemctl --failed`, and the services this host is meant to run. NixOS
+activation can switch the system profile and restart services while still
+returning non-zero because a unit reload failed; distinguish that partial
+activation from a failure before the new generation became active.
+
+NixOS 26.05 changes the default D-Bus implementation to `dbus-broker` and
+documents changing that implementation as a reboot-required switch inhibitor.
+When upgrading across this boundary, inspect the active and target
+`services.dbus.implementation` values and plan a reboot when they differ. See
+the [NixOS 26.05 release notes](https://github.com/NixOS/nixpkgs/blob/release-26.05/nixos/doc/manual/release-notes/rl-2605.section.md).
+
 ## Host File References an Untracked Secret
 
 Typical error:

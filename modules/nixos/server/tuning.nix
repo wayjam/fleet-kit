@@ -46,8 +46,6 @@ in {
         "net.ipv4.tcp_congestion_control" = "bbr";
       };
 
-    systemd.extraConfig = ''
-      DefaultLimitNOFILE=${toString cfg.nofile}
-    '';
+    systemd.settings.Manager.DefaultLimitNOFILE = toString cfg.nofile;
   };
 }

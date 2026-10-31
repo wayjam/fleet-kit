@@ -15,7 +15,7 @@
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
 
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
     darwin-nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
 
     darwin = {
@@ -33,8 +33,8 @@
     };
 
     sops-nix = {
-      # Last commit before sops-nix switched to Go 1.25 and dropped 25.05-or-older compatibility.
-      url = "github:Mic92/sops-nix/17eea6f3816ba6568b8c81db8a4e6ca438b30b7c";
+      # Pin a revision compatible with the supported NixOS 26.05 package set.
+      url = "github:Mic92/sops-nix/60182817ee048ac94b4c68ea76d5ef2e8aac730d";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

@@ -59,10 +59,14 @@ def _host_config_contract(host: str, system: str) -> dict:
     root_hash = _eval_config(host, "users.users.root.hashedPassword", None)
     root_keys = _eval_config(host, "users.users.root.openssh.authorizedKeys.keys", [])
     kernel_params = _eval_config(host, "boot.kernelParams", [])
-    serial_enabled = _eval_config(
-        host,
-        'systemd.services."serial-getty@ttyAMA0".enable',
-        False,
+    serial_enabled = (
+        _eval_config(
+            host,
+            'systemd.services."serial-getty@ttyAMA0".enable',
+            False,
+        )
+        if system == "aarch64-linux"
+        else False
     )
     contract = {
         "root_password": (
@@ -135,8 +139,17 @@ def _stage_preflight(ctx: RunContext) -> None:
         die("aarch64 image host requires UEFI (/sys/firmware/efi is missing)")
     if system == "aarch64-linux" and facts.get("disk") != "yes":
         die(f"configured install disk {disk} is not present on target")
-    if facts.get("memory_mb", "0").isdigit() and int(facts["memory_mb"]) < 4096:
-        die(f"target has only {facts['memory_mb']} MiB RAM; at least 4096 MiB is recommended for remote install")
+    min_memory_mib = ctx.args.min_memory_mib
+    if (
+        min_memory_mib > 0
+        and facts.get("memory_mb", "0").isdigit()
+        and int(facts["memory_mb"]) < min_memory_mib
+    ):
+        die(
+            f"target has only {facts['memory_mb']} MiB RAM; at least {min_memory_mib} MiB "
+            "is required by the configured preflight threshold "
+            "(--min-memory-mib; use 0 to disable this check)"
+        )
 
     ctx.data["target_facts"] = facts
     ctx.data["disk"] = disk

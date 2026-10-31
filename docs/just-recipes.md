@@ -44,10 +44,13 @@ just eval
 
 ### `just build <host>`
 
-Build one host system closure locally.
+Build one host system closure. By default this uses Colmena; pass `--builder`
+to build the NixOS system closure on a remote builder. This works for regular
+hosts as well as image hosts; use `just image` for disk image artifacts.
 
 ```shell
 just build aws-jp1
+just build aws-jp1 --builder default
 ```
 
 ## Deployment And Install
@@ -107,6 +110,11 @@ just install orcl-nl-arm \
   --ssh-target root@141.144.197.33:2234 \
   --stop-after preflight
 ```
+
+Preflight defaults to a 4096 MiB RAM threshold; `--min-memory-mib <MiB>` can
+override it, and `--min-memory-mib 0` disables only this check. This is a
+conservative fleet safeguard, not a guarantee that a lower-memory install will
+succeed.
 
 Preparation installs only `kexec-tools` on Debian/Ubuntu. The final NixOS SSH
 port is taken from the host configuration (`2234` here); kexec and installer SSH

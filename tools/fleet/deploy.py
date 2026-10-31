@@ -8,6 +8,7 @@ Remote-builder deploy is split into stages for resume / retry / interactivity:
 """
 
 import shlex
+import subprocess
 
 from builder import (
     apply_builder_overrides,
@@ -18,7 +19,7 @@ from builder import (
     sync_to_builder,
 )
 from common import run
-from nix import colmena_cmd
+from nix import colmena_cmd, host_deployment
 from orchestrator import RunContext, Stage, StageRunner, make_context
 
 
@@ -35,6 +36,40 @@ def _stage_sync(ctx: RunContext) -> None:
 def _stage_lock(ctx: RunContext) -> None:
     builder = ctx.data["builder"]
     lock_fleetkit_on_builder(ctx.config, builder)
+
+
+def _stage_target_ssh_preflight(ctx: RunContext) -> None:
+    """Verify the builder can reach the current target before building/applying."""
+    host = ctx.data["deploy_target"]
+    deployment = host_deployment(host)
+    target_host = deployment.get("targetHost")
+    if not target_host:
+        raise RuntimeError(f"deployment.targetHost is missing for {host}")
+
+    target_user = str(deployment.get("targetUser", "root"))
+    if "@" in str(target_host):
+        target_user, target_host = str(target_host).rsplit("@", 1)
+    target_port = int(deployment.get("targetPort", 22))
+    target = f"{target_user}@{target_host}"
+    probe = [
+        "ssh",
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", "ConnectTimeout=10",
+        "-o", "ConnectionAttempts=1",
+        "-p", str(target_port),
+        target,
+        "true",
+    ]
+    command = " ".join(shlex.quote(part) for part in probe)
+    try:
+        remote_shell(ctx.data["builder"], command)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"builder '{ctx.data['builder']['name']}' cannot SSH to {target}:{target_port}. "
+            "Authorize the builder's public key in the target's currently active SSH keys, "
+            "then resume with `--resume --from-stage target-preflight`."
+        ) from exc
 
 
 def _stage_apply_remote(ctx: RunContext) -> None:
@@ -72,6 +107,12 @@ def cmd_deploy(args, config):
         stages = [
             Stage(name="sync", description="sync worktree to builder", run=_stage_sync, retryable=True),
             Stage(name="lock", description="flake lock --override-input on builder", run=_stage_lock, retryable=True),
+            Stage(
+                name="target-preflight",
+                description=f"verify builder SSH access to {args.target}",
+                run=_stage_target_ssh_preflight,
+                retryable=True,
+            ),
             Stage(name="apply", description=f"colmena apply --on {args.target} on builder", run=_stage_apply_remote, retryable=False, destructive=True),
         ]
         runner = StageRunner(ctx)
