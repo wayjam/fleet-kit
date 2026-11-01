@@ -1,7 +1,8 @@
 {pkgs, ...}: {
   ##########################################################################
   #
-  #  Install all apps and packages here.
+  #  Shared baseline packages for macOS hosts.
+  #  Host-specific Homebrew apps belong in the private inventory.
   #
   #  NOTE: Your can find all available options in:
   #    https://daiderd.com/nix-darwin/manual/index.html
@@ -49,65 +50,5 @@
       # QQ = 451108668;
     };
 
-    # `brew install`
-    brews = [
-      "mas"
-      "reattach-to-user-namespace"
-
-      # dev
-      "opencode"
-
-      # tools
-      "mole"
-    ];
-
-    # `brew install --cask`
-    casks = [
-      # dev
-      "visual-studio-code"
-      "cursor"
-
-      # terminal
-      "tabby"
-
-      # AI
-      "alma"
-      "claude-code"
-      "codex"
-      "antigravity"
-
-      # tools
-      "omnidisksweeper"
-      "the-unarchiver"
-      "raycast"
-
-      # sync
-      "dropbox"
-      "bitwarden"
-
-      # ime
-      "squirrel-app"
-      "input-source-pro"
-
-      # browsers
-      "google-chrome"
-
-      # communication
-
-      # media
-      "iina"
-
-      # others
-      "clash-verge-rev"
-      # "tailscale"
-
-      # note & knowledge
-      "notion"
-      "obsidian"
-
-      # virtualization
-      "orbstack" # docker & vm
-      # "utm"
-    ];
   };
 }
