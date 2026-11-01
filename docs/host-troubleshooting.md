@@ -90,9 +90,29 @@ activation from a failure before the new generation became active.
 
 NixOS 26.05 changes the default D-Bus implementation to `dbus-broker` and
 documents changing that implementation as a reboot-required switch inhibitor.
-When upgrading across this boundary, inspect the active and target
-`services.dbus.implementation` values and plan a reboot when they differ. See
+When upgrading across this boundary, Fleet compares the running process with
+the target `services.dbus.implementation` and requires a boot-only deployment
+when they differ. See
 the [NixOS 26.05 release notes](https://github.com/NixOS/nixpkgs/blob/release-26.05/nixos/doc/manual/release-notes/rl-2605.section.md).
+
+The 26.05 switch-inhibitor check compares keys present in both generations. A
+25.05 system has no D-Bus inhibitor key, so the first 26.05 switch can pass that
+check without comparing the old implementation. `fleet deploy <host>` therefore
+probes the running D-Bus process before online activation. If it differs from
+the target, use a boot-only activation and reboot manually:
+
+```shell
+just deploy <host> --builder default --activation boot
+# Reboot the host through the already-confirmed access path.
+just verify <host> --unit komari-agent.service --unit xray.service  # on proxy hosts
+```
+
+`--activation boot` sets the next-boot generation; it does not reboot the host.
+Do not retry a failed online `apply` until the post-apply probe has established
+whether the target generation became active. `just verify` is read-only and
+checks the running generation, D-Bus implementation and bus, failed systemd
+units, plus any explicitly requested units. If SSH or the probe is unavailable,
+the state is unknown; do not treat that as permission to reboot or retry.
 
 ## Host File References an Untracked Secret
 

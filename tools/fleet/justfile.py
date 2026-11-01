@@ -12,6 +12,7 @@ JUSTFILE_TEMPLATE = """# Fleet Justfile shortcuts.
 # to the Python CLI. Use normal fleet flags after the required args:
 #   just image panstar-hks --builder builder --no-kvm
 #   just deploy panstar-hks --builder builder --retry 1
+#   just deploy panstar-hks --builder builder --activation boot
 #   just inventory-add-host my-vps --target-host 1.2.3.4 --kind proxy
 #   just sync --builder default --dry-run
 #
@@ -86,6 +87,10 @@ sync *args:
 # Deploy to a host (stages: sync→lock→apply) — `just deploy <target> [fleet flags...]`
 deploy target *args:
   nix run .#fleet -- deploy {{target}} {{args}}
+
+# Read-only post-deployment checks — `just verify <host> [--unit <unit> ...]`
+verify host *args:
+  nix run .#fleet -- verify {{host}} {{args}}
 
 # Deploy to all Colmena hosts (stages: sync→lock→apply) — `just deploy-all [fleet flags...]`
 deploy-all *args:

@@ -15,7 +15,7 @@ from builder import (
     cmd_builder_ping,
     sync_to_builder,
 )
-from deploy import cmd_deploy, cmd_deploy_all
+from deploy import cmd_deploy, cmd_deploy_all, cmd_verify
 from diff_cmd import cmd_diff
 from doctor import cmd_doctor
 from image import cmd_download_image, cmd_image
@@ -74,12 +74,35 @@ def build_parser():
     p = sub.add_parser("deploy")
     p.add_argument("target")
     p.add_argument("--builder", default="")
+    p.add_argument(
+        "--activation",
+        choices=("switch", "boot"),
+        default="switch",
+        help="activate online (default) or only set the next-boot system; reboot remains manual",
+    )
     add_builder_options(p)
     add_orchestration_options(p)
     p.set_defaults(func=cmd_deploy)
 
+    # -- verify ---------------------------------------------------------------
+    p = sub.add_parser("verify", help="read-only post-deployment host verification")
+    p.add_argument("host")
+    p.add_argument(
+        "--unit",
+        action="append",
+        default=[],
+        help="require a systemd unit to be active; may be passed more than once",
+    )
+    p.add_argument(
+        "--strict-generation",
+        action="store_true",
+        help="fail unless the running generation exactly matches the current local configuration",
+    )
+    p.set_defaults(func=cmd_verify)
+
     p = sub.add_parser("deploy-all")
     p.add_argument("--builder", default="")
+    p.add_argument("--activation", choices=("switch", "boot"), default="switch")
     add_builder_options(p)
     add_orchestration_options(p)
     p.set_defaults(func=cmd_deploy_all)

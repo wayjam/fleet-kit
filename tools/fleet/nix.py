@@ -93,6 +93,20 @@ def host_deployment(host):
     return deployment
 
 
+def nixos_host_names():
+    """Return declared NixOS host names without evaluating full configurations to JSON."""
+    return json.loads(
+        capture([
+            "nix",
+            "eval",
+            ".#nixosConfigurations",
+            "--apply",
+            "builtins.attrNames",
+            "--json",
+        ])
+    )
+
+
 def eval_host_json(host, path, default):
     value = maybe_nix_eval_json(f".#nixosConfigurations.{host}.config.{path}")
     return default if value is None else value

@@ -6,12 +6,23 @@
     "aarch64-darwin"
   ];
 
-  mkHostDefaults = hostName: {lib, ...}: {
+  mkHostDefaults = hostName: {inputs, lib, ...}: {
     nixpkgs.overlays = [
       (final: prev:
         lib.optionalAttrs (!(prev ? buildGo125Module) && (prev ? buildGo124Module)) {
           buildGo125Module = prev.buildGo124Module;
         })
+      # Keep the NixOS module set on the stable nixpkgs input, while allowing
+      # fast-moving proxy daemons to track nixos-unstable independently.
+      (final: prev:
+        lib.optionalAttrs (inputs ? nixpkgs-unstable) (let
+          unstable = inputs.nixpkgs-unstable.legacyPackages.${prev.stdenv.hostPlatform.system};
+        in {
+          hysteria = unstable.hysteria;
+          realm = unstable.realm;
+          sing-box = unstable.sing-box;
+          xray = unstable.xray;
+        }))
     ];
     networking.hostName = lib.mkDefault hostName;
   };

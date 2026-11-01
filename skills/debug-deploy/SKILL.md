@@ -83,6 +83,37 @@ SSH, remote nix, rsync presence, disk.
 | Stage sync SSH 255 | Network/SSH | Retry; check `fleet.toml` builder host/port/key |
 | Module option missing after kit change | Stale lock | `nix flake update fleetkit` |
 
+### D-Bus reload failure or NixOS 26.05 implementation change
+
+NixOS 26.05 defaults to `dbus-broker`. Its inhibitor key may be absent from a
+running 25.05 generation, so the first 26.05 switch can pass the inhibitor check
+without comparing the old implementation. Fleet checks the live D-Bus process
+before `apply` and blocks an online implementation transition.
+
+For an intentional implementation transition, use a boot-only activation; it
+does not reboot the host:
+
+```shell
+just deploy <host> --builder default --activation boot
+# Reboot manually via the known-good console/access path.
+just verify <host>
+```
+
+Add `--unit <unit>` to `verify` for each service that host must run, for example
+`--unit komari-agent.service --unit xray.service` on proxy hosts. After any
+non-zero `apply`, do not blindly retry. Review the automatic read-only probe:
+
+- Target generation active + D-Bus process differs from target: schedule a
+  controlled reboot, then run `just verify`.
+- Target generation not active: do not assume reboot will fix it; inspect the
+  activation failure first.
+- SSH/probe unavailable: state is unknown; do not reboot or retry based on
+  guesswork.
+
+When `dbus-preflight` reports an implementation mismatch, abort the current
+attempt; do not bypass the guard with an interactive continue. Rerun with the
+explicit `--activation boot` workflow above.
+
 Details: [docs/host-troubleshooting.md](../../docs/host-troubleshooting.md)
 
 ### 5. Config diff (optional)

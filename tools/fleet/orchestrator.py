@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from common import die, repo_root
+from console import status, styled
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +185,12 @@ def resume_hint(ctx: RunContext, stages: list[Stage], failed_stage: str) -> str:
 
 def _interactive_failure_prompt(ctx: RunContext, stage: Stage, attempt: int, exc: Exception) -> FailureAction:
     """Prompt the user for a failure action in TTY mode."""
-    print(f"\n[fleet] Stage '{stage.name}' failed (attempt {attempt}): {exc}", file=sys.stderr)
+    print("\n" + status(
+        "✗ FAILED",
+        f"{stage.name} · attempt {attempt}: {exc}",
+        level="error",
+        stream=sys.stderr,
+    ), file=sys.stderr)
     options = []
     if (
         not stage.destructive
@@ -314,25 +320,35 @@ class StageRunner:
 
         active_stages = stages[start_idx : stop_idx + 1]
 
-        for stage in active_stages:
-            self._execute_stage(stage)
+        for index, stage in enumerate(active_stages, start=1):
+            self._execute_stage(stage, index=index, total=len(active_stages))
 
-        print(f"\n[fleet] {ctx.command} pipeline completed ({len(active_stages)} stage(s)).", file=sys.stderr)
+        print(
+            "\n" + status(
+                "✓ COMPLETE",
+                f"{ctx.command} · {ctx.target} · {len(active_stages)} stage(s)",
+                level="success",
+                stream=sys.stderr,
+            ),
+            file=sys.stderr,
+        )
 
-    def _execute_stage(self, stage: Stage) -> None:
+    def _execute_stage(self, stage: Stage, *, index: int, total: int) -> None:
         ctx = self.ctx
 
         # Skip if already done (resume).
         if is_stage_done(ctx, stage.name):
-            print(f"[fleet] {ctx.command}: stage '{stage.name}' already done — skipping.", file=sys.stderr)
+            print(status("↷ SKIP", f"{stage.name} · already done", level="warning", stream=sys.stderr), file=sys.stderr)
             return
 
         # Skip if explicitly skipped earlier.
         if stage_skip_marker(ctx, stage.name).exists():
-            print(f"[fleet] {ctx.command}: stage '{stage.name}' was skipped earlier — skipping.", file=sys.stderr)
+            print(status("↷ SKIP", f"{stage.name} · skipped earlier", level="warning", stream=sys.stderr), file=sys.stderr)
             return
 
-        print(f"\n[fleet] {ctx.command}: stage '{stage.name}' — {stage.description}", file=sys.stderr)
+        heading = f"{ctx.command} · {ctx.target} · stage {index}/{total}"
+        print("\n" + styled(f"━━ {heading} ━━", "blue", "bold", stream=sys.stderr), file=sys.stderr)
+        print(status("▶ RUN", f"{stage.name} — {stage.description}", level="info", stream=sys.stderr), file=sys.stderr)
 
         attempt = 0
         max_attempts = 1 + (ctx.retry if stage.retryable else 0)
@@ -344,7 +360,7 @@ class StageRunner:
                 if stage.verify is not None:
                     stage.verify(ctx)
                 mark_stage_done(ctx, stage.name)
-                print(f"[fleet] {ctx.command}: stage '{stage.name}' succeeded.", file=sys.stderr)
+                print(status("✓ DONE", stage.name, level="success", stream=sys.stderr), file=sys.stderr)
                 return
             except KeyboardInterrupt:
                 self._handle_interrupt(stage)
@@ -355,11 +371,13 @@ class StageRunner:
 
                 if can_auto_retry:
                     wait = min(2 ** (attempt - 1), 30)
-                    print(
-                        f"[fleet] stage '{stage.name}' failed (attempt {attempt}/{max_attempts}): {exc}",
-                        file=sys.stderr,
-                    )
-                    print(f"[fleet] auto-retry in {wait}s ...", file=sys.stderr)
+                    print(status(
+                        "✗ FAIL",
+                        f"{stage.name} · attempt {attempt}/{max_attempts}: {exc}",
+                        level="error",
+                        stream=sys.stderr,
+                    ), file=sys.stderr)
+                    print(status("↻ RETRY", f"in {wait}s", level="warning", stream=sys.stderr), file=sys.stderr)
                     time.sleep(wait)
                     continue
 
@@ -386,6 +404,12 @@ class StageRunner:
 
                 # Non-interactive: die with resume hint.
                 print(resume_hint(ctx, [], stage.name), file=sys.stderr)
+                print(status(
+                    "✗ ABORTED",
+                    f"{stage.name} failed after {attempt} attempt(s): {exc}",
+                    level="error",
+                    stream=sys.stderr,
+                ), file=sys.stderr)
                 die(f"stage '{stage.name}' failed after {attempt} attempt(s): {exc}")
 
     # -----------------------------------------------------------------------

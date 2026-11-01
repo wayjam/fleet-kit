@@ -5,39 +5,42 @@
   ...
 }: let
   cfg = config.my.monitoring.komariAgent;
-  komariAgentPackage =
-    pkgs.komari-agent
-    or (pkgs.stdenvNoCC.mkDerivation {
-      pname = "komari-agent";
-      version = "1.2.13";
+  komariAgentVersion = "1.5.11";
+  komariAgentPackage = pkgs.stdenvNoCC.mkDerivation {
+    pname = "komari-agent";
+    version = komariAgentVersion;
 
-      src =
-        if pkgs.stdenv.hostPlatform.system == "x86_64-linux"
-        then
-          pkgs.fetchurl {
-            url = "https://github.com/komari-monitor/komari-agent/releases/download/1.2.13/komari-agent-linux-amd64";
-            hash = "sha256-2ExuN4FqLKNcJYPSAESxWBCbmT4Ts85fr89f30RrVzY=";
-          }
-        else if pkgs.stdenv.hostPlatform.system == "aarch64-linux"
-        then
-          pkgs.fetchurl {
-            url = "https://github.com/komari-monitor/komari-agent/releases/download/1.2.13/komari-agent-linux-arm64";
-            hash = "sha256-+kQel6ZVYLb8N2lykmtnD+XKQH3xJKgGqWo8S6Ud+Gg=";
-          }
-        else throw "komari-agent fallback package currently supports only x86_64-linux and aarch64-linux.";
+    src =
+      if pkgs.stdenv.hostPlatform.system == "x86_64-linux"
+      then
+        pkgs.fetchurl {
+          url = "https://github.com/komari-monitor/komari-agent/releases/download/${komariAgentVersion}/komari-agent-linux-amd64";
+          hash = "sha256-eMKNieUjgWuuoBDA7QcU8kX1CP/aygVA9cnyMPcFPIw=";
+        }
+      else if pkgs.stdenv.hostPlatform.system == "aarch64-linux"
+      then
+        pkgs.fetchurl {
+          url = "https://github.com/komari-monitor/komari-agent/releases/download/${komariAgentVersion}/komari-agent-linux-arm64";
+          hash = "sha256-/44z3BLvK1c4+ikaWEmL0V3L+O9Rlmq2X9Z2eaCryH0=";
+        }
+      else throw "komari-agent supports only x86_64-linux and aarch64-linux.";
 
-      dontUnpack = true;
+    dontUnpack = true;
 
-      installPhase = ''
-        runHook preInstall
-        install -Dm755 "$src" "$out/bin/komari-agent"
-        runHook postInstall
-      '';
+    installPhase = ''
+      runHook preInstall
+      install -Dm755 "$src" "$out/bin/komari-agent"
+      runHook postInstall
+    '';
 
-      meta = {
-        mainProgram = "komari-agent";
-      };
-    });
+    meta = {
+      description = "Lightweight monitoring agent for Komari";
+      homepage = "https://github.com/komari-monitor/komari-agent";
+      license = lib.licenses.mit;
+      mainProgram = "komari-agent";
+      platforms = ["x86_64-linux" "aarch64-linux"];
+    };
+  };
 
   boolEnv = value:
     if value
